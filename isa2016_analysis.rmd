@@ -1,0 +1,191 @@
+---
+title: "Atlanta and #allmalepanels: #isa2016 as it happened on Twitter - Data and Analysis"
+author: "Felix Haass"
+output: 
+  html_document
+---
+
+
+
+```{r, echo = F, message = F, warning=F}
+
+# Load packages
+
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(scales)
+library(twitteR)
+
+
+# load the data
+load("isa2016data.rdata")
+
+
+
+```
+
+## Descriptive Statistics
+I count `r length(unique(isa2016df$screenName))` unique Twitter users writing `r nrow(isa2016df)` tweets about #isa2016. This number of Tweets is in the ballpark of [last year's 8187 tweets](https://bretterblog.wordpress.com/2015/03/04/isa2015-as-it-happened-on-twitter/). (Now, many of those are retweets; the number of original tweets excluding retweets is considerably lower: `r isa2016df %>% filter(isRetweet == F) %>% nrow()`.) 
+
+## Timeline of Tweets
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width = 11}
+
+dt <- 30
+
+isa2016df$date <- as.POSIXct(strptime(isa2016df$created, "%Y-%m-%d %H:%M:%S", tz="GMT"))
+isa2016df <- isa2016df %>% 
+  arrange(date)
+
+# fix dates
+isa2016df$date <- isa2016df$date - (6*60*60)
+
+
+minDate <- round(min(isa2016df$date), "hours")
+maxDate <- round(max(isa2016df$date), "hours")
+dateBreaks <- seq(minDate, maxDate, by = 60 * 60)
+dateBreaks <- c(dateBreaks[1] - 60 * 60, dateBreaks)
+
+tweetCount <- hist(isa2016df$date, breaks=dateBreaks, plot=FALSE)                             
+binBreaks <- tweetCount$breaks[1:length(tweetCount$breaks)-1]
+
+plotData <- data.frame(dates=dateBreaks[1:length(dateBreaks)-1], tweets=as.numeric(tweetCount$count))
+
+# time <- data.frame(xmin = as.POSIXct("2016-03-26 08:15"), xmax = as.POSIXct("2016-03-26 10:00"), ymin=-Inf, ymax=Inf)
+           
+
+time_isa2016 <- ggplot(plotData) +
+  geom_bar(aes(x=dates, y=tweets), stat="identity", fill = "black", width = 3600) +
+  scale_y_continuous("Number of tweets") +
+  scale_x_datetime(date_breaks = "1 day", labels = date_format("%d March")) +
+  theme(axis.text.x=element_text(hjust=1.1, angle=45), legend.key=element_blank())  +
+  theme_bw() +
+  labs(x="", title="#isa2016 Twitter usage over time \n") +
+  geom_vline(aes(xintercept = as.numeric(as.POSIXct("2016-03-16 00:00:00 UTC"))), color = "firebrick") +
+  geom_vline(aes(xintercept = as.numeric(as.POSIXct("2016-03-17 00:00:00 UTC"))), color = "firebrick") +
+  geom_vline(aes(xintercept = as.numeric(as.POSIXct("2016-03-18 00:00:00 UTC"))), color = "firebrick") +
+  geom_vline(aes(xintercept = as.numeric(as.POSIXct("2016-03-19 00:00:00 UTC"))), color = "firebrick") +
+  geom_vline(aes(xintercept = as.numeric(as.POSIXct("2016-03-20 00:00:00 UTC"))), color = "firebrick") +
+  geom_text(label = "Day 1", aes(x = as.POSIXct("2016-03-16 13:00:00 UTC"), y = 300), size = 4) +
+  geom_text(label = "Day 2", aes(x = as.POSIXct("2016-03-17 13:00:00 UTC"), y = 300), size = 4) +
+  geom_text(label = "Day 3", aes(x = as.POSIXct("2016-03-18 13:00:00 UTC"), y = 300), size = 4) +
+  geom_text(label = "Day 4", aes(x = as.POSIXct("2016-03-19 13:00:00 UTC"), y = 300), size = 4) +
+  theme(axis.text.x=element_text(size = 8))
+
+print(time_isa2016)
+
+```
+
+
+## Who tweets most?
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height= 9, fig.width=6.5}
+
+# 
+# # plot twenty busiest tweeps
+# df <- isa2016df %>% 
+#   group_by(screenName) %>% 
+#   summarise(all_tweets = n(),
+#             retweets = sum(isRetweet),
+#             original_tweets = all_tweets - retweets) %>% 
+#   ungroup() %>% 
+#   top_n( 20, all_tweets) %>% 
+#   gather(tweet_type, number, -screenName) %>% 
+#   group_by(tweet_type) %>% 
+#   arrange(number)
+# 
+# 
+# setup_twitter_oauth(consumer_key = 'DZ3izDTm26J4mdLuJqK8sQ',
+#                     consumer_secret='a02Tx4Yh3yPqT5WuWzG7CfnRSpu9mI7huthJOLmg4')
+#  
+# 
+# # get real names
+# for(i in 1:nrow(df)) {
+#   df[i, "realname"] <- getUser(df[i, "screenName"])$name  
+# }
+# 
+# # create display
+# df$disp_name <- paste0(df$realname, " \n(@", df$screenName, ")")
+
+# save(df, file = "../twitter_user_ranking.rdata")
+
+load("../twitter_user_ranking.rdata")
+
+df <- df %>% 
+  ungroup() %>% 
+  filter(tweet_type != "all_tweets") %>% 
+  mutate(tweet_type = ifelse(tweet_type == "original_tweets", "Original Tweet", "Retweet"))
+
+plot_user_ranking <- ggplot(df, 
+                            aes(x=reorder(disp_name, number), # reorder factor in order of most frequent
+                                y = number)) + 
+  geom_bar(stat = "identity", aes(fill = tweet_type)) + 
+  scale_x_discrete(labels = df$disp_name) + 
+  coord_flip() +
+  scale_fill_brewer(palette = "Set1", 
+                    guide = guide_legend(title = "")) + 
+  labs(x = "", y = "") +
+  theme_bw() +
+  theme(axis.text.y=element_text(size = 8),legend.position = "bottom") 
+  
+print(plot_user_ranking)
+
+
+```
+
+
+## Most frequent hashtags
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(stringr)
+library(knitr)
+
+hashtags <- str_extract_all(isa2016df$text, "#\\S+")
+
+hashtags <- unlist(hashtags)
+
+hashtags <- str_replace_all(hashtags, "[[:punct:]]", "")
+hashtags <- tolower(hashtags)
+
+hashtags <- str_replace_all(hashtags, "allmalepanels", "allmalepanel")
+
+hashtags <- data.frame(hashtags) %>% 
+  group_by(hashtags) %>% 
+  summarise(number = n()) %>% 
+  ungroup() %>% 
+  arrange(desc(number)) %>% 
+  filter(hashtags != "isa2016") %>% 
+  mutate(rank = 1:nrow(.)) %>% 
+  dplyr::select(rank, hashtags, number) %>% 
+  top_n(10, number)
+
+kable(hashtags)
+
+```
+
+## Most popular tweets
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+most_popular_tweets <- isa2016df %>% 
+  filter(isRetweet == FALSE) %>% 
+  ungroup() %>% 
+  mutate(popularity = retweetCount + favoriteCount) %>% 
+  arrange(desc(popularity)) %>% 
+  top_n(10, popularity) %>% 
+  dplyr::select(text, id, screenName, popularity) %>% 
+  mutate(text = gsub("\\n", "", text),
+         link_to_tweet = paste0("<a href = https://twitter.com/", screenName, "/status/", id, "> Link </a>"),
+         screenName = paste0("<a href = https://twitter.com/", screenName, ">", screenName, "</a>"),
+         rank = 1:nrow(.)) %>% 
+  rename(tweet_text = text,
+         twitter_user = screenName) %>% 
+  dplyr::select(rank, tweet_text, twitter_user, link_to_tweet, popularity)
+
+kable(most_popular_tweets)
+
+
+```
